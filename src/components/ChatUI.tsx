@@ -1,17 +1,52 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
+import { v4 as uuidv4 } from 'uuid'; // Make sure to install uuid package
 
 interface Message {
   text: string;
   sender: 'user' | 'assistant';
   timestamp: string;
+  isHtml?: boolean;
+}
+
+interface WebhookResponse {
+  output: string;
+  data?: {
+    isFollowup?: boolean;
+  };
+  activeQuestion?: string;
 }
 
 const ChatUI = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Session management
+  const [sessionId] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const savedSessionId = localStorage.getItem('chatSessionId');
+    if (savedSessionId) return savedSessionId;
+    const newSessionId = uuidv4();
+    localStorage.setItem('chatSessionId', newSessionId);
+    return newSessionId;
+  });
+
+  // Initialize messages from localStorage if they exist
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window === 'undefined') return [];
+    const saved = localStorage.getItem(`chatHistory-${sessionId}`);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+    return [];
+  });
+
   const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem(`chatHistory-${sessionId}`, JSON.stringify(messages));
+  }, [messages, sessionId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -22,28 +57,65 @@ const ChatUI = () => {
     scrollToBottom();
   }, [messages]);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || isLoading) return;
 
-    const newMessage: Message = {
+    setIsLoading(true);
+    // Add user message immediately
+    setMessages(prev => [...prev, {
       text: inputValue,
       sender: 'user',
       timestamp: new Date().toISOString(),
-    };
-
-    setMessages([...messages, newMessage]);
-    setInputValue('');
+      isHtml: true
+    }]);
     
-    // Here you would typically make an API call to get the assistant's response
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        text: "This is a sample response.",
+    const currentInput = inputValue;
+    setInputValue(''); // Clear input immediately
+
+    try {
+      const response = await fetch(
+        "https://amazon360.app.n8n.cloud/webhook/0638fe95-2a53-48a9-b06c-af9558f09809/chat",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            chatInput: currentInput.replace(/<[^>]*>/g, ""),
+            sessionId: sessionId,
+            action: "sendMessage",
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        console.error("Server error:", response.status, await response.text());
+        throw new Error(`Server responded with ${response.status}`);
+      }
+
+      const responseText = await response.text();
+      console.log("Raw response:", responseText);
+
+      const data: WebhookResponse = responseText ? JSON.parse(responseText) : null;
+
+      if (data?.output) {
+        setMessages(prev => [...prev, {
+          text: data.output,
+          sender: 'assistant',
+          timestamp: new Date().toISOString(),
+        }]);
+      }
+    } catch (error) {
+      console.error("Error details:", error);
+      setMessages(prev => [...prev, {
+        text: "Sorry, there was an error processing your message. Please try again.",
         sender: 'assistant',
         timestamp: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, assistantMessage]);
-    }, 1000);
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -58,9 +130,18 @@ const ChatUI = () => {
                 : 'self-start bg-white border border-gray-200 text-gray-800'
             }`}
           >
-            {message.text}
+            {message.isHtml ? (
+              <div dangerouslySetInnerHTML={{ __html: message.text }} />
+            ) : (
+              message.text
+            )}
           </div>
         ))}
+        {isLoading && (
+          <div className="self-start bg-white border border-gray-200 text-gray-800 p-3 rounded-xl">
+            Typing...
+          </div>
+        )}
         <div ref={messagesEndRef} /> {/* Invisible element for scrolling */}
       </div>
       
@@ -73,11 +154,14 @@ const ChatUI = () => {
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="Type your message..."
+            disabled={isLoading}
           />
           <button 
             type="submit" 
-            className="px-6 py-3 bg-[#005073] text-white rounded-lg text-base 
-                     cursor-pointer transition-colors duration-200 hover:bg-[#003d57]"
+            className={`px-6 py-3 bg-[#005073] text-white rounded-lg text-base 
+                     cursor-pointer transition-colors duration-200 hover:bg-[#003d57]
+                     ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={isLoading}
           >
             Send
           </button>
