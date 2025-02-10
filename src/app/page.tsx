@@ -2,7 +2,7 @@ import ChatUI from '@/components/ChatUI'
 
 export default function Home() {
   return (
-    <main className="min-h-screen">
+    <main className="h-screen overflow-hidden">
       <ChatUI />
     </main>
   )

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 interface Message {
   text: string;
@@ -11,6 +11,16 @@ interface Message {
 const ChatUI = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -38,7 +48,7 @@ const ChatUI = () => {
 
   return (
     <div className="max-w-6xl mx-auto p-5 bg-gray-50 min-h-screen">
-      <div className="flex flex-col gap-4 mb-24 p-5">
+      <div className="flex flex-col gap-4 mb-24 p-5 overflow-y-auto max-h-[calc(100vh-120px)]">
         {messages.map((message, index) => (
           <div
             key={index}
@@ -51,6 +61,7 @@ const ChatUI = () => {
             {message.text}
           </div>
         ))}
+        <div ref={messagesEndRef} /> {/* Invisible element for scrolling */}
       </div>
       
       <div className="fixed bottom-0 left-0 right-0 p-5 bg-white border-t border-gray-200">
