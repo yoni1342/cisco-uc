@@ -29,15 +29,21 @@ const ChatUI = () => {
     return newSessionId;
   });
 
-  // Initialize messages from localStorage if they exist
+  // Initialize messages from localStorage only on client-side
   const [messages, setMessages] = useState<Message[]>(() => {
-    if (typeof window === 'undefined') return [];
-    const saved = localStorage.getItem(`chatHistory-${sessionId}`);
-    if (saved) {
-      return JSON.parse(saved);
-    }
+    // Move localStorage check inside useEffect
     return [];
   });
+
+  // Load messages from localStorage after mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(`chatHistory-${sessionId}`);
+      if (saved) {
+        setMessages(JSON.parse(saved));
+      }
+    }
+  }, [sessionId]);
 
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -72,22 +78,18 @@ const ChatUI = () => {
     
     const currentInput = inputValue;
     setInputValue(''); // Clear input immediately
-
     try {
-      const response = await fetch(
-        "https://amazon360.app.n8n.cloud/webhook/0638fe95-2a53-48a9-b06c-af9558f09809/chat",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            chatInput: currentInput.replace(/<[^>]*>/g, ""),
-            sessionId: sessionId,
-            action: "sendMessage",
-          }),
-        }
-      );
+      const response = await fetch("http://localhost/webhook/0638fe95-2a53-48a9-b06c-af9558f09809/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chatInput: currentInput.replace(/<[^>]*>/g, ""),
+          sessionId: sessionId,
+          action: "sendMessage",
+        }),
+      });
 
       if (!response.ok) {
         console.error("Server error:", response.status, await response.text());
@@ -133,7 +135,7 @@ const ChatUI = () => {
             {message.isHtml ? (
               <div dangerouslySetInnerHTML={{ __html: message.text }} />
             ) : (
-              message.text
+              <div>{message.text}</div>
             )}
           </div>
         ))}
